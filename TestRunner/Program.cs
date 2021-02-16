@@ -158,7 +158,7 @@ namespace ConsoleApp1
         static IEnumerable<string> GetFunctions()
         {
             yield return "FileWritePerf";
-            // yield return "DotnetDefaults";
+            yield return "DotnetDefaults";
         }
 
         static IEnumerable<string> GetTestDirs()
@@ -169,13 +169,13 @@ namespace ConsoleApp1
 
         static IEnumerable<bool> GetSetLengths()
         {
-            yield return false;
+            // yield return false;
             yield return true;
         }
 
         static IEnumerable<int> GetAppBufferSizes()
         {
-            yield return 1 * MiB;
+            yield return 4 * MiB;
             /*
             yield return 2 * MiB;
             yield return 4 * MiB;
