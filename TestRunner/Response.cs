@@ -8,5 +8,6 @@
         public int AppBufferSize { get; init; }
         public int FileStreamBufferSize { get; init; }
         public double ElapsedMs { get; init; }
+        public bool SetLength { get; init; }
     }
 }

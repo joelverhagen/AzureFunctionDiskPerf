@@ -7,6 +7,8 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Buffers;
 
 namespace FunctionApp1
 {
@@ -36,15 +38,23 @@ namespace FunctionApp1
                     dest.SetLength(dataSize);
                 }
 
-                var random = new Random(0);
-                var appBuffer = new byte[appBufferSize];
-                var written = 0;
-                while (written < dataSize)
+                using var source = GetSource(dataSize);
+
+                var appBuffer = ArrayPool<byte>.Shared.Rent(appBufferSize);
+                try
                 {
-                    var toWrite = Math.Min(appBufferSize, dataSize - written);
-                    random.NextBytes(appBuffer.AsSpan(0, toWrite));
-                    await dest.WriteAsync(appBuffer, 0, toWrite);
-                    written += toWrite;
+                    appBufferSize = appBuffer.Length;
+                    int read;
+                    do
+                    {
+                        read = await source.ReadAsync(appBuffer, 0, appBuffer.Length);
+                        await dest.WriteAsync(appBuffer, 0, read);
+                    }
+                    while (read > 0);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(appBuffer);
                 }
             }
 
@@ -57,6 +67,7 @@ namespace FunctionApp1
                 dataSize,
                 appBufferSize,
                 fileStreamBufferSize,
+                setLength,
                 elapsedMs = sw.Elapsed.TotalMilliseconds,
             });
         }
@@ -77,14 +88,9 @@ namespace FunctionApp1
                 bufferSize: 4 * 1024, // Default
                 FileOptions.Asynchronous | FileOptions.DeleteOnClose))
             {
-                var random = new Random(0);
-                var buffer = new byte[dataSize];
-                random.NextBytes(buffer);
-                var source = new MemoryStream(buffer);
-
+                using var source = GetSource(dataSize);
                 await source.CopyToAsync(dest);
             }
-
             sw.Stop();
 
             return new JsonResult(new
@@ -133,6 +139,14 @@ namespace FunctionApp1
             }
         }
 
+        private static UnseekableMemoryStream GetSource(int dataSize)
+        {
+            var random = new Random(0);
+            var buffer = ArrayPool<byte>.Shared.Rent(dataSize);
+            random.NextBytes(buffer.AsSpan(0, dataSize));
+            return new UnseekableMemoryStream(buffer, 0, dataSize);
+        }
+
         private enum TestDir
         {
             Temp,
@@ -159,6 +173,63 @@ namespace FunctionApp1
             }
 
             return tempDir;
+        }
+
+        private class UnseekableMemoryStream : Stream
+        {
+            private readonly byte[] _buffer;
+            private readonly MemoryStream _inner;
+
+            public UnseekableMemoryStream(byte[] buffer, int index, int count)
+            {
+                _buffer = buffer;
+                _inner = new MemoryStream(buffer, index, count);
+            }
+
+            public override bool CanRead => true;
+            public override bool CanSeek => false;
+            public override bool CanWrite => false;
+            public override long Length => _inner.Length;
+            public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    ArrayPool<byte>.Shared.Return(_buffer);
+                    _inner.Dispose();
+                }
+            }
+
+            public override void Flush()
+            {
+                throw new NotSupportedException();
+            }
+
+            public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            {
+                return await _inner.ReadAsync(buffer, offset, count, cancellationToken);
+            }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                throw new NotSupportedException();
+            }
+
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                throw new NotSupportedException();
+            }
+
+            public override void SetLength(long value)
+            {
+                throw new NotSupportedException();
+            }
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                throw new NotSupportedException();
+            }
         }
     }
 }

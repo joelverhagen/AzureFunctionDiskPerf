@@ -31,17 +31,10 @@ namespace ConsoleApp1
             Console.WriteLine(await WarmUpAsync(httpClient, endpoint, code, "TEMP"));
             Console.WriteLine();
 
-            var skippedInputs = SkippedInputs.Select(x => x with { Endpoint = endpoint, Code = code }).ToHashSet();
-
             var iterations = 10;
             for (var inputIndex = 0; inputIndex < inputs.Count; inputIndex++)
             {
                 var input = inputs[inputIndex];
-
-                if (skippedInputs.Contains(input))
-                {
-                    continue;
-                }
 
                 for (var iterationIndex = 0; iterationIndex < iterations; iterationIndex++)
                 {
@@ -67,6 +60,7 @@ namespace ConsoleApp1
             return await ExecuteAsync(httpClient, new TestInput
             {
                 Code = code,
+                Function = GetFunctions().First(),
                 Endpoint = endpoint,
                 AppBufferSize = 4096,
                 FileStreamBufferSize = 4096,
@@ -104,7 +98,8 @@ namespace ConsoleApp1
             };
 
             var queryString = string.Join("&", parameters.Select(x => $"{x.Key}={Uri.EscapeDataString(x.Value.ToString())}"));
-            var url = new UriBuilder(input.Endpoint) { Query = queryString };
+            var url = new UriBuilder(input.Endpoint.TrimEnd('/') + '/' + input.Function) { Query = queryString };
+
             var sw = Stopwatch.StartNew();
             var json = await httpClient.GetStringAsync(url.Uri);
             sw.Stop();
@@ -116,10 +111,12 @@ namespace ConsoleApp1
                 Id = Guid.NewGuid(),
                 Input = new TestInput
                 {
+                    Function = input.Function,
                     AppBufferSize = response.AppBufferSize,
                     DataSize = response.DataSize,
                     FileStreamBufferSize = response.FileStreamBufferSize,
                     TestDir = response.TestDir,
+                    SetLength = response.SetLength,
                 },
                 ClientElapsedMs = sw.Elapsed.TotalMilliseconds,
                 ServerElapsedMs = response.ElapsedMs,
@@ -128,56 +125,23 @@ namespace ConsoleApp1
 
         private const int MiB = 1024 * 1024;
 
-        /// <summary>
-        /// These inputs time out.
-        /// </summary>
-        private static IReadOnlyList<TestInput> SkippedInputs = new[]
-        {
-            new TestInput
-            {
-                AppBufferSize = 4096,
-                DataSize = 64 * MiB,
-                FileStreamBufferSize = 4096,
-                TestDir = "HOME",
-            },
-            new TestInput
-            {
-                AppBufferSize = 4096,
-                DataSize = 64 * MiB,
-                FileStreamBufferSize = 1,
-                TestDir = "HOME",
-            },
-            new TestInput
-            {
-                AppBufferSize = 4096,
-                DataSize = 32 * MiB,
-                FileStreamBufferSize = 4096,
-                TestDir = "HOME",
-            },
-            new TestInput
-            {
-                AppBufferSize = 4096,
-                DataSize = 32 * MiB,
-                FileStreamBufferSize = 1,
-                TestDir = "HOME",
-            },
-        };
-
         static IEnumerable<TestInput> GetTestInputs(string endpoint, string code)
         {
             var inputs =
-                from testDir in new[] { "TEMP", "HOME" }
-                from setLength in new[] { true, false }
+                from function in GetFunctions()
+                from testDir in GetTestDirs()
+                from setLength in GetSetLengths()
                 from appBufferSize in GetAppBufferSizes()
                 from fileStreamBufferSize in GetFileStreamBufferSizes()
                 from dataSize in GetDataSizes()
                 select new TestInput
                 {
                     Endpoint = endpoint,
+                    Function = function,
                     Code = code,
                     TestDir = testDir,
                     AppBufferSize = appBufferSize,
-                    FileStreamBufferSize = fileStreamBufferSize > 0 ? fileStreamBufferSize : appBufferSize,
+                    FileStreamBufferSize = fileStreamBufferSize,
                     DataSize = dataSize,
                     SetLength = setLength,
                 };
@@ -191,43 +155,55 @@ namespace ConsoleApp1
                 .ThenByDescending(x => x.SetLength);
         }
 
+        static IEnumerable<string> GetFunctions()
+        {
+            yield return "FileWritePerf";
+            // yield return "DotnetDefaults";
+        }
+
+        static IEnumerable<string> GetTestDirs()
+        {
+            // yield return "TEMP";
+            yield return "HOME";
+        }
+
+        static IEnumerable<bool> GetSetLengths()
+        {
+            yield return false;
+            yield return true;
+        }
+
         static IEnumerable<int> GetAppBufferSizes()
         {
-            // Match the file stream buffer size
-            foreach (var size in GetFileStreamBufferSizes())
-            {
-                if (size >= 4096)
-                {
-                    yield return size;
-                }
-            }
-
-            yield return MiB;
+            yield return 1 * MiB;
+            /*
             yield return 2 * MiB;
             yield return 4 * MiB;
+            yield return 8 * MiB;
+            yield return 16 * MiB;
+            yield return 32 * MiB;
+            yield return 64 * MiB;
+            yield return 128 * MiB;
+            yield return 256 * MiB;
+            */
         }
 
         static IEnumerable<int> GetFileStreamBufferSizes()
         {
-            yield return -1; // match the app buffer size
-            yield return 1; // minimum
-            yield return 4096; // 4 KiB, default for FileStream
-            yield return 80 * 1024; // 80 KiB, default for CopyToAsync
-            yield return 4 * 1024 * 1024; // 4 MiB, default for Azure File Share client: https://docs.microsoft.com/en-us/dotnet/api/azure.storage.files.shares.models.sharefileopenwriteoptions.buffersize?view=azure-dotnet
+            yield return 4096;
         }
 
         static IEnumerable<int> GetDataSizes()
         {
-            yield return 0;
-            yield return 1024;
-            yield return MiB / 2;
-            var dataSizeMiB = 1;
-            do
-            {
-                yield return MiB * dataSizeMiB;
-                dataSizeMiB *= 2;
-            }
-            while (dataSizeMiB <= 64);
+            yield return 1 * MiB;
+            yield return 2 * MiB;
+            yield return 4 * MiB;
+            yield return 8 * MiB;
+            yield return 16 * MiB;
+            yield return 32 * MiB;
+            yield return 64 * MiB;
+            yield return 128 * MiB;
+            yield return 256 * MiB;
         }
     }
 }
