@@ -2,7 +2,7 @@
 {
     public class Response
     {
-        public bool UseHome { get; init; }
+        public string TestDir { get; init; }
         public string TempPath { get; init; }
         public int DataSize { get; init; }
         public int AppBufferSize { get; init; }

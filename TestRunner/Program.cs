@@ -26,15 +26,10 @@ namespace ConsoleApp1
             var inputs = GetTestInputs(endpoint, code).ToList();
 
             // Warm-up
-            await ExecuteAsync(httpClient, new TestInput
-            {
-                Code = code,
-                Endpoint = endpoint,
-                AppBufferSize = 4096,
-                FileStreamBufferSize = 4096,
-                DataSize = 4096,
-                UseHome = true,
-            });
+            Console.WriteLine("Warming up...");
+            Console.WriteLine((await WarmUpAsync(httpClient, endpoint, code, "HOME")).);
+            Console.WriteLine(await WarmUpAsync(httpClient, endpoint, code, "TEMP"));
+            Console.WriteLine();
 
             var skippedInputs = SkippedInputs.Select(x => x with { Endpoint = endpoint, Code = code }).ToHashSet();
 
@@ -72,6 +67,19 @@ namespace ConsoleApp1
             }
         }
 
+        private static async Task<TestOutput> WarmUpAsync(HttpClient httpClient, string endpoint, string code, string testDir)
+        {
+            return await ExecuteAsync(httpClient, new TestInput
+            {
+                Code = code,
+                Endpoint = endpoint,
+                AppBufferSize = 4096,
+                FileStreamBufferSize = 4096,
+                DataSize = 4096,
+                TestDir = testDir,
+            });
+        }
+
         private static void AppendOutput(TestOutput output)
         {
             var path = "results.csv";
@@ -92,7 +100,7 @@ namespace ConsoleApp1
             var parameters = new Dictionary<string, object>
             {
                 { "code", input.Code },
-                { "useHome", input.UseHome },
+                { "testDir", input.TestDir },
                 { "dataSize", input.DataSize },
                 { "appBufferSize", input.AppBufferSize },
                 { "fileStreamBufferSize", input.FileStreamBufferSize },
@@ -114,7 +122,7 @@ namespace ConsoleApp1
                     AppBufferSize = response.AppBufferSize,
                     DataSize = response.DataSize,
                     FileStreamBufferSize = response.FileStreamBufferSize,
-                    UseHome = response.UseHome,
+                    TestDir = response.TestDir,
                 },
                 ClientElapsedMs = sw.Elapsed.TotalMilliseconds,
                 ServerElapsedMs = response.ElapsedMs,
@@ -133,35 +141,35 @@ namespace ConsoleApp1
                 AppBufferSize = 4096,
                 DataSize = 64 * MiB,
                 FileStreamBufferSize = 4096,
-                UseHome = true,
+                TestDir = "HOME",
             },
             new TestInput
             {
                 AppBufferSize = 4096,
                 DataSize = 64 * MiB,
                 FileStreamBufferSize = 1,
-                UseHome = true,
+                TestDir = "HOME",
             },
             new TestInput
             {
                 AppBufferSize = 4096,
                 DataSize = 32 * MiB,
                 FileStreamBufferSize = 4096,
-                UseHome = true,
+                TestDir = "HOME",
             },
             new TestInput
             {
                 AppBufferSize = 4096,
                 DataSize = 32 * MiB,
                 FileStreamBufferSize = 1,
-                UseHome = true,
+                TestDir = "HOME",
             },
         };
 
         static IEnumerable<TestInput> GetTestInputs(string endpoint, string code)
         {
             var inputs =
-                from useHome in new[] { false, true }
+                from testDir in new[] { "TEMP", "HOME" }
                 from appBufferSize in GetAppBufferSizes()
                 from fileStreamBufferSize in GetFileStreamBufferSizes()
                 from dataSize in GetDataSizes()
@@ -169,7 +177,7 @@ namespace ConsoleApp1
                 {
                     Endpoint = endpoint,
                     Code = code,
-                    UseHome = useHome,
+                    TestDir = testDir,
                     AppBufferSize = appBufferSize,
                     FileStreamBufferSize = fileStreamBufferSize > 0 ? fileStreamBufferSize : appBufferSize,
                     DataSize = dataSize,
@@ -177,7 +185,7 @@ namespace ConsoleApp1
 
             return inputs
                 .Distinct()
-                .OrderByDescending(x => x.UseHome)
+                .OrderByDescending(x => x.TestDir)
                 .ThenByDescending(x => x.DataSize)
                 .ThenByDescending(x => x.AppBufferSize)
                 .ThenByDescending(x => x.FileStreamBufferSize);

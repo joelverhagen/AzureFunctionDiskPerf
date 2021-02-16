@@ -6,41 +6,24 @@ using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace FunctionApp1
 {
     public static class Function1
     {
         [FunctionName("FileWritePerf")]
-        public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "get", Route = null)] HttpRequest req)
+        public static async Task<IActionResult> FileWritePerf([HttpTrigger(AuthorizationLevel.Function, "get", Route = null)] HttpRequest req)
         {
             var dataSize = int.Parse(req.Query["dataSize"]);
             var appBufferSize = int.Parse(req.Query["appBufferSize"]);
             var fileStreamBufferSize = int.Parse(req.Query["fileStreamBufferSize"]);
-            var useHome = bool.Parse(req.Query["useHome"]);
-
-            string baseDir;
-            if (useHome && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("HOME")))
-            {
-                baseDir = Environment.ExpandEnvironmentVariables(Path.Combine("%HOME%", "Knapcode.FunctionDiskPerf", "temp"));
-            }
-            else
-            {
-                useHome = false;
-                baseDir = Environment.ExpandEnvironmentVariables(Path.Combine(Path.GetTempPath(), "Knapcode.FunctionDiskPerf", "temp"));
-            }
-
-            baseDir = Path.GetFullPath(baseDir);
-            if (!Directory.Exists(baseDir))
-            {
-                Directory.CreateDirectory(baseDir);
-            }
-
-            var tempPath = Path.Combine(baseDir, Guid.NewGuid().ToString());
+            var testDir = Enum.Parse<TestDir>(req.Query["testDir"], ignoreCase: true);
+            var testPath = Path.Combine(GetTempDir(testDir), Guid.NewGuid().ToString());
 
             var sw = Stopwatch.StartNew();
             using (var dest = new FileStream(
-                tempPath,
+                testPath,
                 FileMode.Create,
                 FileAccess.ReadWrite,
                 FileShare.None,
@@ -63,13 +46,78 @@ namespace FunctionApp1
 
             return new JsonResult(new
             {
-                useHome,
-                tempPath,
+                testDir = testDir.ToString(),
+                testPath,
                 dataSize,
                 appBufferSize,
                 fileStreamBufferSize,
                 elapsedMs = sw.Elapsed.TotalMilliseconds,
             });
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern bool GetDiskFreeSpaceEx(
+            string lpDirectoryName,
+            out ulong lpFreeBytesAvailable,
+            out ulong lpTotalNumberOfBytes,
+            out ulong lpTotalNumberOfFreeBytes);
+
+        [FunctionName("DiskSpace")]
+        public static IActionResult DiskSpace([HttpTrigger(AuthorizationLevel.Function, "get", Route = null)] HttpRequest req)
+        {
+            try
+            {
+                var tempDir = GetTempDir(TestDir.Temp);
+                GetDiskFreeSpaceEx(tempDir, out var tempFreeBytesAvailable, out var tempTotalNumberOfBytes, out var tempTotalNumberOfFreeBytes);
+
+                var homeDir = GetTempDir(TestDir.Home);
+                GetDiskFreeSpaceEx(homeDir, out var homeFreeBytesAvailable, out var homeTotalNumberOfBytes, out var homeTotalNumberOfFreeBytes);
+
+                return new JsonResult(new
+                {
+                    tempDir,
+                    tempFreeBytesAvailable,
+                    tempTotalNumberOfBytes,
+                    tempTotalNumberOfFreeBytes,
+
+                    homeDir,
+                    homeFreeBytesAvailable,
+                    homeTotalNumberOfBytes,
+                    homeTotalNumberOfFreeBytes,
+                });
+            }
+            catch (Exception ex)
+            {
+                return new OkObjectResult(ex.ToString());
+            }
+        }
+
+        private enum TestDir
+        {
+            Temp,
+            Home,
+        }
+
+        private static string GetTempDir(TestDir testDir)
+        {
+            string baseDir;
+            switch (testDir)
+            {
+                case TestDir.Home when !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("HOME")):
+                    baseDir = Environment.GetEnvironmentVariable("HOME");
+                    break;
+                default:
+                    baseDir = Path.GetTempPath();
+                    break;
+            }
+
+            var tempDir = Path.Combine(Path.GetFullPath(baseDir), "AzureFunctionDiskPerf");
+            if (!Directory.Exists(tempDir))
+            {
+                Directory.CreateDirectory(tempDir);
+            }
+
+            return tempDir;
         }
     }
 }
