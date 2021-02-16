@@ -27,7 +27,7 @@ namespace ConsoleApp1
 
             // Warm-up
             Console.WriteLine("Warming up...");
-            Console.WriteLine((await WarmUpAsync(httpClient, endpoint, code, "HOME")).);
+            Console.WriteLine(await WarmUpAsync(httpClient, endpoint, code, "HOME"));
             Console.WriteLine(await WarmUpAsync(httpClient, endpoint, code, "TEMP"));
             Console.WriteLine();
 
@@ -36,11 +36,6 @@ namespace ConsoleApp1
             var iterations = 10;
             for (var inputIndex = 0; inputIndex < inputs.Count; inputIndex++)
             {
-                if (inputIndex < 278)
-                {
-                    continue;
-                }
-
                 var input = inputs[inputIndex];
 
                 if (skippedInputs.Contains(input))
@@ -77,6 +72,7 @@ namespace ConsoleApp1
                 FileStreamBufferSize = 4096,
                 DataSize = 4096,
                 TestDir = testDir,
+                SetLength = true,
             });
         }
 
@@ -104,6 +100,7 @@ namespace ConsoleApp1
                 { "dataSize", input.DataSize },
                 { "appBufferSize", input.AppBufferSize },
                 { "fileStreamBufferSize", input.FileStreamBufferSize },
+                { "setLength", input.SetLength },
             };
 
             var queryString = string.Join("&", parameters.Select(x => $"{x.Key}={Uri.EscapeDataString(x.Value.ToString())}"));
@@ -170,6 +167,7 @@ namespace ConsoleApp1
         {
             var inputs =
                 from testDir in new[] { "TEMP", "HOME" }
+                from setLength in new[] { true, false }
                 from appBufferSize in GetAppBufferSizes()
                 from fileStreamBufferSize in GetFileStreamBufferSizes()
                 from dataSize in GetDataSizes()
@@ -181,6 +179,7 @@ namespace ConsoleApp1
                     AppBufferSize = appBufferSize,
                     FileStreamBufferSize = fileStreamBufferSize > 0 ? fileStreamBufferSize : appBufferSize,
                     DataSize = dataSize,
+                    SetLength = setLength,
                 };
 
             return inputs
@@ -188,7 +187,8 @@ namespace ConsoleApp1
                 .OrderByDescending(x => x.TestDir)
                 .ThenByDescending(x => x.DataSize)
                 .ThenByDescending(x => x.AppBufferSize)
-                .ThenByDescending(x => x.FileStreamBufferSize);
+                .ThenByDescending(x => x.FileStreamBufferSize)
+                .ThenByDescending(x => x.SetLength);
         }
 
         static IEnumerable<int> GetAppBufferSizes()

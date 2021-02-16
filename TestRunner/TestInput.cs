@@ -8,5 +8,6 @@
         public int DataSize { get; init; }
         public int AppBufferSize { get; init; }
         public int FileStreamBufferSize { get; init; }
+        public bool SetLength { get; set; }
     }
 }
