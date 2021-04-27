@@ -17,7 +17,7 @@ namespace ConsoleApp1
     {
         static async Task Main(string[] args)
         {
-            var endpoint = "https://<function app name>.azurewebsites.net/api/FileWritePerf";
+            var endpoint = "https://<function app name>.azurewebsites.net/api";
             var code = "<function app access key>";
 
             using var httpClient = new HttpClient();
@@ -27,11 +27,11 @@ namespace ConsoleApp1
 
             // Warm-up
             Console.WriteLine("Warming up...");
-            Console.WriteLine(await WarmUpAsync(httpClient, endpoint, code, "HOME"));
-            Console.WriteLine(await WarmUpAsync(httpClient, endpoint, code, "TEMP"));
+            Console.WriteLine(JsonSerializer.Serialize(await WarmUpAsync(httpClient, endpoint, code, "HOME")));
+            Console.WriteLine(JsonSerializer.Serialize(await WarmUpAsync(httpClient, endpoint, code, "TEMP")));
             Console.WriteLine();
 
-            var iterations = 10;
+            var iterations = 100;
             for (var inputIndex = 0; inputIndex < inputs.Count; inputIndex++)
             {
                 var input = inputs[inputIndex];
@@ -158,12 +158,12 @@ namespace ConsoleApp1
         static IEnumerable<string> GetFunctions()
         {
             yield return "FileWritePerf";
-            yield return "DotnetDefaults";
+            // yield return "DotnetDefaults";
         }
 
         static IEnumerable<string> GetTestDirs()
         {
-            // yield return "TEMP";
+            yield return "TEMP";
             yield return "HOME";
         }
 
